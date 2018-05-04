@@ -2,92 +2,110 @@
 """
 Created on Thu Apr 26 14:17:14 2018
 
-@author: franc
+@author: BriseKael
 """
 
 import helper
 import numpy as np
 
+from sklearn.model_selection import GridSearchCV
+from sklearn.svm import SVC
+from sklearn.model_selection import cross_val_score
+
+
 # step 1, get all word and its counts, sort by word frequency
 # we get word_count_list
 
 strategy_instance = helper.strategy()
-word_count_dict = dict()
+wordcount_dict = dict()
+word0count_dict = dict()
+word1count_dict = dict()
 
 for words in strategy_instance.class0:
     for word in words:
-        if word in word_count_dict:
-            word_count_dict[word] += 1
+        if word in wordcount_dict:
+            wordcount_dict[word] += 1
         else:
-            word_count_dict[word] = 1
+            wordcount_dict[word] = 1
+        if word in word0count_dict:
+            word0count_dict[word] += 1
+        else:
+            word0count_dict[word] = 1
+
+for words in strategy_instance.class1:
+    for word in words:
+        if word in wordcount_dict:
+            wordcount_dict[word] += 1
+        else:
+            wordcount_dict[word] = 1
+        if word in word1count_dict:
+            word1count_dict[word] += 1
+        else:
+            word1count_dict[word] = 1
             
-word_count_list = sorted(word_count_dict.items(), key=lambda x: x[1], reverse=True)
+wordcount_list = sorted(wordcount_dict.items(), key=lambda x: [-x[1], x[0]])
 
 ## step 2, get word and its index
 # the smaller the word freq, the smaller the word index
 # add 'UNK' as unknown word into the front
 # we get dictionary
 
-dictionary = dict()
-dictionary['UNK'] = 0
-for word, count in word_count_list:
-    dictionary[word] = len(dictionary)
+wordindex_dict = dict()
+wordindex_dict['CLASS0_'] = 0
+wordindex_dict['CLASS1_'] = 1
+wordindex_dict['UNK'] = 2
+for word, count in wordcount_list:
+    if count == 1:
+        continue
+    wordindex_dict[word] = len(wordindex_dict)
     
-#### step 1-2, testing sort freq does matter
-#### it does matter. 
-#    
-#dictionary = dict()
-#dictionary['UNK'] = 0
-#
-#for words in strategy_instance.class0:
-#    for word in words:
-#        if word not in dictionary:
-#            dictionary[word] = len(dictionary)
-#
-#            
-#for words in strategy_instance.class1:
-#    for word in words:
-#        if word not in dictionary:
-#            dictionary[word] = len(dictionary)
 
-### step 3, x_train is the train data with word index sort by freq
+## step 3, x_train is the train data with word index sort by freq
 # and its counts in this sentence
 # idx   [0, 1, 2, ..., len(dictionary)]
 # count [0, 9, 5, ..., 0, 0, 0]
 # we get x_train, y_train as np.array
 
-x_train = []
-y_train = []
+xtrain = []
+ytrain = []
 for words in strategy_instance.class0:
-    tokens = [0] * len(dictionary)
+    tokens = [0] * len(wordindex_dict)
     for word in words:
-        if word in dictionary:
-            tokens[dictionary[word]] = words.count(word) ## 1
+        if word in wordindex_dict:
+            tokens[wordindex_dict[word]] = words.count(word) ## 1
         else:
-            tokens[dictionary['UNK']] += 1
-    x_train.append(tokens)
-    y_train.append(0)
+            if word in word0count_dict:
+                tokens[wordindex_dict['CLASS0_']] += 1
+            if word in word1count_dict:
+                tokens[wordindex_dict['CLASS1_']] += 1
+            tokens[wordindex_dict['UNK']] += 1
+    xtrain.append(tokens)
+    ytrain.append(0)
 
 for words in strategy_instance.class1:
-    tokens = [0] * len(dictionary)
+    tokens = [0] * len(wordindex_dict)
     for word in words:
-        if word in dictionary:
-            tokens[dictionary[word]] = words.count(word) ## 1
+        if word in wordindex_dict:
+            tokens[wordindex_dict[word]] = words.count(word) ## 1
         else:
-            tokens[dictionary['UNK']] += 1
-    x_train.append(tokens)
-    y_train.append(1)
+            if word in word0count_dict:
+                tokens[wordindex_dict['CLASS0_']] += 1
+            if word in word1count_dict:
+                tokens[wordindex_dict['CLASS1_']] += 1
+            tokens[wordindex_dict['UNK']] += 1
+    xtrain.append(tokens)
+    ytrain.append(1)
 
-x_train = np.array(x_train)
-y_train = np.array(y_train)
+xtrain = np.array(xtrain)
+ytrain = np.array(ytrain)
 
-## step 5, train with x_train, y_train
+## step 5, train with xtrain, ytrain
 # 
 
-parameters={'gamma': 'auto', 'C': 1, 'kernel': 'rbf', 'degree': 3, 'coef0': 0.0}
+parameters={'gamma': 'auto', 'C': 0.005, 'kernel': 'linear', 'degree': 3, 'coef0': 0.0}
 
-clf = strategy_instance.train_svm(parameters, x_train, y_train)
-print('training_score:', clf.score(x_train, y_train))
+clf = strategy_instance.train_svm(parameters, xtrain, ytrain)
+print('training_score:', clf.score(xtrain, ytrain))
 
 # step 6, get x_test, y_test
 #
@@ -95,88 +113,28 @@ print('training_score:', clf.score(x_train, y_train))
 with open('test_data.txt', 'r') as test_class1_file:
     test_class1 = [line.strip().split(' ') for line in test_class1_file]
 
-x_test = []
-y_test = []
+xtest = []
+ytest = []
 for words in test_class1:
-    tokens = [0] * len(dictionary)
+    tokens = [0] * len(wordindex_dict)
     for word in words:
-        if word in dictionary:
-            tokens[dictionary[word]] = words.count(word) ## 1
+        if word in wordindex_dict:
+            tokens[wordindex_dict[word]] = words.count(word) ## 1
         else:
-            tokens[dictionary['UNK']] += 1
-    x_test.append(tokens)
-    y_test.append(1)
-
-x_test = np.array(x_test)
-y_test = np.array(y_test)
-
-print('testing_score:', clf.score(x_test, y_test))
-
-# =============================================================================
-# model selection
-# verbose 1是ppt模式，2是BB模式，
-# =============================================================================
-from sklearn.model_selection import GridSearchCV
-from sklearn.svm import SVC
-from sklearn.model_selection import cross_val_score
-
-# =============================================================================
-# parameters={'gamma': 'auto', 'C': 1.0, 'kernel': 'linear', 'degree': 3, 'coef0': 0.0}
-# ‘linear’:线性核函数
-# ‘poly’:多项式核函数
-# ‘rbf’:径像核函数/高斯核
-# ‘sigmod’:sigmod核函数
-# 
-# =============================================================================
-# kernel=linear
-# C=10, test_score=0.45
-#model = SVC(kernel='linear')
-##param_grid = {'C': [1e-3, 1e-2, 1e-1, 1, 10, 100, 1000]}
-##param_grid = {'C': [0.01, 0.1, 1, 10, 100]} => 0.01
-##param_grid = {'C': [0.0001, 0.001, 0.01, 0.1, 1]} => 0.001
-#param_grid = {'C': [0.00001, 0.0001, 0.001, 0.01, 0.1]}
-#
-#grid_search = GridSearchCV(model, param_grid, verbose=2, cv=10)
-#grid_search.fit(x_train, y_train)
-#
-#print(grid_search.best_estimator_)
+            if word in word0count_dict:
+                tokens[wordindex_dict['CLASS0_']] += 1
+            if word in word1count_dict:
+                tokens[wordindex_dict['CLASS1_']] += 1
+            tokens[wordindex_dict['UNK']] += 1
+    xtest.append(tokens)
+    ytest.append(1)
 
 
+xtest = np.array(xtest)
+ytest = np.array(ytest)
 
-# =============================================================================
-# kernel=poly
-# C
-# degree
-# gamma
-# coef0
-#model = SVC(kernel='poly')
-#param_grid = {'C': [1e-3, 1e-2, 1e-1, 1, 10, 100, 1000], 
-#              'gamma': [1e-3, 1e-2, 1e-1, 1, 10, 100, 1000]} 
-#
-#grid_search = GridSearchCV(model, param_grid, n_jobs=4, verbose=1, cv=10)
-#grid_search.fit(x_train_gai, y_train)
-#
-#print(model.best_estimator_)
+print('testing_score:', clf.score(xtest, ytest))
+print('cv10 mean:', cross_val_score(clf, xtrain, ytrain).mean())
 
-# =============================================================================
-# kernel=rbf
-# C
-# gamma
-
-#model = SVC(kernel='rbf')
-#param_grid = {'C': [0.1, 1, 10, 100], 
-#              'gamma': [0.1, 1, 10, 100]} 
-#
-#grid_search = GridSearchCV(model, param_grid, verbose=2, cv=5)    
-#grid_search.fit(x_train, y_train)
-#
-#print(grid_search.best_estimator_)
-
-
-# =============================================================================
-# kernel=sigmod
-# C
-# gamma
-# coef0
 
 
